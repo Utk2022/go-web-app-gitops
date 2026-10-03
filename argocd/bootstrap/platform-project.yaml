@@ -1,0 +1,34 @@
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: go-web-app-platform
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+spec:
+  description: Production-style SRE/DevOps platform for go-web-app
+
+  sourceRepos:
+    - https://github.com/Utk2022/go-web-app-gitops.git
+    - https://prometheus-community.github.io/helm-charts
+
+  destinations:
+    - namespace: go-web-app
+      server: https://kubernetes.default.svc
+
+    - namespace: monitoring
+      server: https://kubernetes.default.svc
+
+    - namespace: argocd
+      server: https://kubernetes.default.svc
+
+  clusterResourceWhitelist:
+    - group: "*"
+      kind: "*"
+
+  namespaceResourceWhitelist:
+    - group: "*"
+      kind: "*"
+
+  orphanedResources:
+    warn: true

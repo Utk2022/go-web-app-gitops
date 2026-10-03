@@ -1,0 +1,22 @@
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: go-web-app
+  namespace: go-web-app
+  labels:
+    app.kubernetes.io/name: go-web-app
+    team: sre
+spec:
+  namespaceSelector:
+    matchNames:
+      - go-web-app
+
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: go-web-app
+
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: 15s
+      scrapeTimeout: 10s

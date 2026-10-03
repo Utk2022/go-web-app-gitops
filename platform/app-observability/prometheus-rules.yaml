@@ -1,0 +1,386 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: go-web-app-slo-rules
+  namespace: go-web-app
+spec:
+  groups:
+
+    # ==========================================================
+    # Recording rules
+    # ==========================================================
+    - name: go-web-app-recording-rules
+
+      interval: 30s
+
+      rules:
+
+        - record: go_web_app:request_rate_5m
+          expr: |
+            sum(
+              rate(
+                go_web_app_http_requests_total{
+                  route=~"/home|/courses|/about|/contact",
+                  method="GET"
+                }[5m]
+              )
+            )
+
+        - record: go_web_app:error_ratio_5m
+          expr: |
+            (
+              sum(
+                rate(
+                  go_web_app_http_requests_total{
+                    route=~"/home|/courses|/about|/contact",
+                    method="GET",
+                    code=~"5.."
+                  }[5m]
+                )
+              )
+            )
+            /
+            (
+              sum(
+                rate(
+                  go_web_app_http_requests_total{
+                    route=~"/home|/courses|/about|/contact",
+                    method="GET"
+                  }[5m]
+                )
+              )
+            )
+
+        - record: go_web_app:p95_latency_seconds_5m
+          expr: |
+            histogram_quantile(
+              0.95,
+              sum by (le) (
+                rate(
+                  go_web_app_http_request_duration_seconds_bucket{
+                    route=~"/home|/courses|/about|/contact",
+                    method="GET"
+                  }[5m]
+                )
+              )
+            )
+
+        - record: go_web_app:availability_sli_7d
+          expr: |
+            1 -
+            (
+              sum(
+                increase(
+                  go_web_app_http_requests_total{
+                    route=~"/home|/courses|/about|/contact",
+                    method="GET",
+                    code=~"5.."
+                  }[7d]
+                )
+              )
+              /
+              sum(
+                increase(
+                  go_web_app_http_requests_total{
+                    route=~"/home|/courses|/about|/contact",
+                    method="GET"
+                  }[7d]
+                )
+              )
+            )
+
+        - record: go_web_app:availability_error_budget_remaining_7d
+          expr: |
+            1 -
+            (
+              (
+                1 - go_web_app:availability_sli_7d
+              )
+              / 0.001
+            )
+
+        - record: go_web_app:latency_sli_7d
+          expr: |
+            sum(
+              increase(
+                go_web_app_http_request_duration_seconds_bucket{
+                  route=~"/home|/courses|/about|/contact",
+                  method="GET",
+                  le="0.25"
+                }[7d]
+              )
+            )
+            /
+            sum(
+              increase(
+                go_web_app_http_request_duration_seconds_count{
+                  route=~"/home|/courses|/about|/contact",
+                  method="GET"
+                }[7d]
+              )
+            )
+
+        - record: go_web_app:latency_error_budget_remaining_7d
+          expr: |
+            1 -
+            (
+              (
+                1 - go_web_app:latency_sli_7d
+              )
+              / 0.01
+            )
+
+        # --------------------------------------------------------
+        # Burn-rate recording rules
+        # --------------------------------------------------------
+
+        - record: go_web_app:availability_burn_rate_5m
+          expr: |
+            go_web_app:error_ratio_5m / 0.001
+
+        - record: go_web_app:availability_burn_rate_1h
+          expr: |
+            (
+              sum(
+                rate(
+                  go_web_app_http_requests_total{
+                    route=~"/home|/courses|/about|/contact",
+                    method="GET",
+                    code=~"5.."
+                  }[1h]
+                )
+              )
+              /
+              sum(
+                rate(
+                  go_web_app_http_requests_total{
+                    route=~"/home|/courses|/about|/contact",
+                    method="GET"
+                  }[1h]
+                )
+              )
+            ) / 0.001
+
+        - record: go_web_app:latency_burn_rate_5m
+          expr: |
+            (
+              1 -
+              (
+                sum(
+                  rate(
+                    go_web_app_http_request_duration_seconds_bucket{
+                      route=~"/home|/courses|/about|/contact",
+                      method="GET",
+                      le="0.25"
+                    }[5m]
+                  )
+                )
+                /
+                sum(
+                  rate(
+                    go_web_app_http_request_duration_seconds_count{
+                      route=~"/home|/courses|/about|/contact",
+                      method="GET"
+                    }[5m]
+                  )
+                )
+              )
+            ) / 0.01
+
+        - record: go_web_app:latency_burn_rate_1h
+          expr: |
+            (
+              1 -
+              (
+                sum(
+                  rate(
+                    go_web_app_http_request_duration_seconds_bucket{
+                      route=~"/home|/courses|/about|/contact",
+                      method="GET",
+                      le="0.25"
+                    }[1h]
+                  )
+                )
+                /
+                sum(
+                  rate(
+                    go_web_app_http_request_duration_seconds_count{
+                      route=~"/home|/courses|/about|/contact",
+                      method="GET"
+                    }[1h]
+                  )
+                )
+              )
+            ) / 0.01
+
+
+    # ==========================================================
+    # Alerting rules
+    # ==========================================================
+    - name: go-web-app-alerts
+
+      rules:
+
+        # --------------------------------------------------------
+        # High 5xx
+        # --------------------------------------------------------
+
+        - alert: GoWebAppHigh5xxRate
+          expr: go_web_app:error_ratio_5m > 0.01
+          for: 10m
+
+          labels:
+            severity: warning
+            service: go-web-app
+            team: sre
+
+          annotations:
+            summary: "Go web app has a high 5xx error rate"
+            description: |
+              More than 1% of valid application requests are returning
+              HTTP 5xx responses for at least 10 minutes.
+
+              Current error ratio: {{ $value | humanizePercentage }}
+
+            runbook_url: "https://github.com/Utk2022/go-web-app-gitops/blob/main/runbooks/high-5xx.md"
+
+
+        # --------------------------------------------------------
+        # High P95 latency
+        # --------------------------------------------------------
+
+        - alert: GoWebAppHighP95Latency
+          expr: go_web_app:p95_latency_seconds_5m > 0.5
+          for: 10m
+
+          labels:
+            severity: warning
+            service: go-web-app
+            team: sre
+
+          annotations:
+            summary: "Go web app P95 latency is high"
+            description: |
+              P95 request latency has exceeded 500ms for at least
+              10 minutes.
+
+              Current P95 latency: {{ $value | humanizeDuration }}
+
+            runbook_url: "https://github.com/Utk2022/go-web-app-gitops/blob/main/runbooks/high-p95-latency.md"
+
+
+        # --------------------------------------------------------
+        # Availability SLO burn
+        # --------------------------------------------------------
+
+        - alert: GoWebAppAvailabilitySLOBurnCritical
+          expr: |
+            go_web_app:availability_burn_rate_5m > 14.4
+            and
+            go_web_app:availability_burn_rate_1h > 14.4
+          for: 5m
+
+          labels:
+            severity: critical
+            service: go-web-app
+            team: sre
+
+          annotations:
+            summary: "Go web app availability error budget is burning rapidly"
+            description: |
+              Availability SLO error budget is burning at more than
+              14.4x the allowed rate across short and long windows.
+
+              Investigate elevated 5xx responses immediately.
+
+            runbook_url: "https://github.com/Utk2022/go-web-app-gitops/blob/main/runbooks/high-5xx.md"
+
+
+        # --------------------------------------------------------
+        # Latency SLO burn
+        # --------------------------------------------------------
+
+        - alert: GoWebAppLatencySLOBurnCritical
+          expr: |
+            go_web_app:latency_burn_rate_5m > 14.4
+            and
+            go_web_app:latency_burn_rate_1h > 14.4
+          for: 5m
+
+          labels:
+            severity: critical
+            service: go-web-app
+            team: sre
+
+          annotations:
+            summary: "Go web app latency error budget is burning rapidly"
+            description: |
+              Latency SLO error budget is burning at more than
+              14.4x the allowed rate across short and long windows.
+
+              Investigate application latency, CPU saturation,
+              resource limits and recent deployments.
+
+            runbook_url: "https://github.com/Utk2022/go-web-app-gitops/blob/main/runbooks/high-p95-latency.md"
+
+
+        # --------------------------------------------------------
+        # Deployment availability
+        # --------------------------------------------------------
+
+        - alert: GoWebAppPodsNotReady
+          expr: |
+            kube_deployment_status_replicas_available{
+              namespace="go-web-app",
+              deployment="go-web-app"
+            }
+            <
+            kube_deployment_spec_replicas{
+              namespace="go-web-app",
+              deployment="go-web-app"
+            }
+          for: 10m
+
+          labels:
+            severity: warning
+            service: go-web-app
+            team: sre
+
+          annotations:
+            summary: "Go web app has fewer available Pods than desired"
+            description: |
+              Available replicas are below the Deployment's desired
+              replicas for 10 minutes.
+
+            runbook_url: "https://github.com/Utk2022/go-web-app-gitops/blob/main/runbooks/high-5xx.md"
+
+
+        # --------------------------------------------------------
+        # HPA capacity ceiling
+        # --------------------------------------------------------
+
+        - alert: GoWebAppHPAAtMaxReplicas
+          expr: |
+            kube_horizontalpodautoscaler_status_current_replicas{
+              namespace="go-web-app",
+              horizontalpodautoscaler="go-web-app"
+            }
+            >=
+            kube_horizontalpodautoscaler_spec_max_replicas{
+              namespace="go-web-app",
+              horizontalpodautoscaler="go-web-app"
+            }
+          for: 10m
+
+          labels:
+            severity: warning
+            service: go-web-app
+            team: sre
+
+          annotations:
+            summary: "Go web app HPA has reached max replicas"
+            description: |
+              HPA has remained at maxReplicas for 10 minutes.
+              Investigate traffic growth, CPU saturation and node capacity.
+
+            runbook_url: "https://github.com/Utk2022/go-web-app-gitops/blob/main/runbooks/high-p95-latency.md"
