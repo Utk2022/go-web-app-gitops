@@ -24,7 +24,7 @@ prometheus:
   enabled: true
 
   prometheusSpec:
-    replicas: 2
+    replicas: 1
 
     retention: 14d
 
@@ -85,7 +85,7 @@ alertmanager:
       - name: "null"
 
   alertmanagerSpec:
-    replicas: 2
+    replicas: 1 
 
     podAntiAffinity: hard
 
