@@ -1,0 +1,55 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: aws-load-balancer-controller
+  namespace: argocd
+spec:
+  project: default
+
+  source:
+    repoURL: https://aws.github.io/eks-charts
+    chart: aws-load-balancer-controller
+    targetRevision: 1.14.0
+
+    helm:
+      values: |
+        clusterName: go-web-app-sre-dev
+
+        region: us-east-1
+
+        vpcId: vpc-094e077e201eb334e
+
+        replicaCount: 2
+
+        serviceAccount:
+          create: true
+          name: aws-load-balancer-controller
+
+        ingressClass: alb
+
+        createIngressClassResource: true
+
+        defaultTargetType: ip
+
+        enableServiceMutatorWebhook: false
+
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            cpu: 300m
+            memory: 256Mi
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: kube-system
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
