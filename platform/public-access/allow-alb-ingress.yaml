@@ -1,0 +1,26 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-alb-ingress
+  namespace: go-web-app
+
+spec:
+  podSelector:
+    matchLabels:
+      app: go-web-app
+
+  policyTypes:
+    - Ingress
+
+  ingress:
+    - from:
+        - ipBlock:
+            cidr: 10.20.0.0/24
+        - ipBlock:
+            cidr: 10.20.1.0/24
+        - ipBlock:
+            cidr: 10.20.2.0/24
+
+      ports:
+        - protocol: TCP
+          port: 8080
