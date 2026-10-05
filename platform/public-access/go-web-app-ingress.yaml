@@ -1,0 +1,40 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: go-web-app
+  namespace: go-web-app
+
+  annotations:
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    alb.ingress.kubernetes.io/target-type: ip
+
+    alb.ingress.kubernetes.io/backend-protocol: HTTP
+
+    alb.ingress.kubernetes.io/healthcheck-path: /healthz
+    alb.ingress.kubernetes.io/healthcheck-port: traffic-port
+    alb.ingress.kubernetes.io/success-codes: "200"
+
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTP":80}]'
+
+    alb.ingress.kubernetes.io/load-balancer-attributes: >
+      routing.http.drop_invalid_header_fields.enabled=true
+
+    alb.ingress.kubernetes.io/tags: >
+      Project=go-web-app-sre,
+      Environment=dev,
+      ManagedBy=aws-load-balancer-controller
+
+spec:
+  ingressClassName: alb
+
+  rules:
+    - http:
+        paths:
+          - path: /
+            pathType: Exact
+
+            backend:
+              service:
+                name: go-web-app
+                port:
+                  number: 80

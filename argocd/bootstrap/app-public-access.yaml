@@ -1,0 +1,24 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: go-web-app-public-access
+  namespace: argocd
+spec:
+  project: default
+
+  source:
+    repoURL: https://github.com/Utk2022/go-web-app-gitops.git
+    targetRevision: master
+    path: platform/public-access
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: go-web-app
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+
+    syncOptions:
+      - ServerSideApply=true
